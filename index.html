@@ -217,6 +217,41 @@
     </div>
 
     <script>
+        // 🔒 密码保护配置
+        const ACCESS_PASSWORD = "NBA2kyyds"; // 修改为你想设置的密码
+        
+        // 检查密码
+        function checkPassword() {
+            const savedAuth = localStorage.getItem('library_auth');
+            if (savedAuth === 'authenticated') {
+                return true;
+            }
+            
+            const input = prompt("🔒 请输入访问密码：\n（首次使用请联系管理员获取密码）");
+            if (input === ACCESS_PASSWORD) {
+                localStorage.setItem('library_auth', 'authenticated');
+                alert("✅ 密码正确！\n（已记住你的授权，下次无需重新输入）");
+                return true;
+            } else {
+                alert("❌ 密码错误！");
+                return false;
+            }
+        }
+        
+        // 页面加载时检查密码
+        if (!checkPassword()) {
+            document.body.innerHTML = `
+                <div style="display: flex; justify-content: center; align-items: center; height: 100vh; font-family: Arial; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                <div style="background: white; padding: 40px; border-radius: 20px; text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,0.3);">
+            <h1 style="color: #333;">🚫 访问被拒绝</h1>
+                        <p style="color: #666; margin-top: 20px;">密码错误或无访问权限</p>
+                        <p style="color: #999; font-size: 12px; margin-top: 20px;">如有疑问，请联系管理员</p>
+                    </div>
+                </div>
+            `;
+            throw new Error("Access denied");
+        }
+        
         const LIBRARY_API = 'https://libst.sdufe.edu.cn/api.php/v3qrtime';
         const LIBRARY_BASE_URL = 'http://www.skalibrary.net/wx/scancheck';
 
