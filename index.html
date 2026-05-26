@@ -110,6 +110,24 @@
             background: #ffebee;
             color: #d32f2f;
             display: block;
+            text-align: left;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        
+        .debug {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 10px;
+            font-size: 12px;
+            color: #666;
+            line-height: 1.6;
+            margin-top: 20px;
+            display: none;
+        }
+        
+        .debug.show {
+            display: block;
         }
         
         .info {
@@ -127,6 +145,18 @@
         
         .hidden {
             display: none !important;
+        }
+        
+        #debugToggle {
+            margin-top: 10px;
+            background: none;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 5px 10px;
+            font-size: 12px;
+            color: #666;
+            cursor: pointer;
+            width: 100%;
         }
     </style>
 </head>
@@ -153,9 +183,14 @@
         <div class="info">
             <strong>⚠️ 使用说明：</strong><br>
             1. 确保手机已连接校园网（WLAN: SDUFE）<br>
-            2. 点击按钮后，系统会自动获取时间戳并跳转签到<br>
-            3. 签到成功后会跳转到图书馆页面确认
+            2. 建议用手机默认浏览器打开（Chrome/Safari）<br>
+            3. 点击按钮后，系统会自动获取时间戳并跳转签到<br>
+            4. 如果失败，尝试关闭移动数据后重试
         </div>
+        
+        <button id="debugToggle" onclick="toggleDebug()">🔧 显示调试信息</button>
+        
+        <div class="debug" id="debugInfo"></div>
     </div>
 
     <script>
@@ -221,7 +256,7 @@
     // 显示状态消息
     function showStatus(message, type) {
         const statusEl = document.getElementById('status');
-        statusEl.textContent = message;
+        statusEl.innerHTML = message;
         statusEl.className = 'status ' + type;
         statusEl.classList.remove('hidden');
     }
@@ -237,6 +272,25 @@
         document.getElementById('btnCheckin').disabled = disabled;
         document.getElementById('btnLeave').disabled = disabled;
         document.getElementById('btnCheckout').disabled = disabled;
+    }
+    
+    // 显示调试信息
+    function showDebug(info) {
+        const debugEl = document.getElementById('debugInfo');
+        debugEl.innerHTML = info;
+    }
+    
+    // 切换调试信息显示
+    function toggleDebug() {
+        const debugEl = document.getElementById('debugInfo');
+        const toggleBtn = document.getElementById('debugToggle');
+        if (debugEl.classList.contains('show')) {
+            debugEl.classList.remove('show');
+            toggleBtn.textContent = '🔧 显示调试信息';
+        } else {
+            debugEl.classList.add('show');
+            toggleBtn.textContent = '🔧 隐藏调试信息';
+        }
     }
     
     // 处理签到/离馆/签离操作
@@ -260,48 +314,87 @@
         
         showStatus('⏳ 正在获取时间戳...', 'loading');
         
+        // 调试信息
+        let debugInfo = '<strong>🔧 调试信息：</strong><br>';
+        debugInfo += '📡 API地址：<a href="https://libst.sdufe.edu.cn/api.php/v3qrtime" target="_blank">libst.sdufe.edu.cn/api.php/v3qrtime</a><br>';
+        debugInfo += '📡 请求方式：GET<br>';
+        debugInfo += '📡 超时时间：10秒<br><br>';
+        
+        showDebug(debugInfo);
+        
         try {
             // 调用图书馆API获取时间戳
             const apiUrl = 'https://libst.sdufe.edu.cn/api.php/v3qrtime';
             
-            const response = await fetch(apiUrl, {
+            // 添加时间戳防止缓存
+            const cacheBuster = '?_=' + Date.now();
+            
+            const response = await fetch(apiUrl + cacheBuster, {
                 method: 'GET',
                 headers: {
-                    'Accept': 'application/json',
+                    'Accept': 'application/json, text/plain, */*',
                 },
                 // 防止缓存
-                cache: 'no-cache'
+                cache: 'no-cache',
+                // 设置超时
+                signal: AbortSignal.timeout(10000)
             });
             
+            debugInfo += '📥 API响应状态：' + response.status + ' ' + response.statusText + '<br>';
+            debugInfo += '📥 响应头：<br>';
+            for (const [key, value] of response.headers.entries()) {
+                debugInfo += '   ' + key + ': ' + value + '<br>';
+            }
+            debugInfo += '<br>';
+            
             if (!response.ok) {
-                throw new Error('API请求失败，状态码：' + response.status);
+                throw new Error('API请求失败，状态码：' + response.status + ' ' + response.statusText);
             }
             
-            const data = await response.json();
+            const responseText = await response.text();
+            debugInfo += '📥 API响应内容：<br><pre style="background:#eee;padding:5px;border-radius:5px;overflow-x:auto;">' + responseText + '</pre><br>';
             
-            // 假设API返回格式为 { time: "51526269564" } 或直接返回时间戳字符串
-            // 根据实际情况调整
+            // 尝试解析JSON
+            let data;
             let timestamp = '';
-            if (typeof data === 'string') {
-                timestamp = data;
-            } else if (data.time) {
-                timestamp = data.time;
-            } else if (data.t) {
-                timestamp = data.t;
-            } else {
-                // 如果无法解析，尝试直接获取文本
-                timestamp = await response.text();
-                timestamp = timestamp.trim();
+            try {
+                data = JSON.parse(responseText);
+                debugInfo += '📥 JSON解析成功：<br><pre style="background:#eee;padding:5px;border-radius:5px;overflow-x:auto;">' + JSON.stringify(data, null, 2) + '</pre><br>';
+                
+                // 尝试多种可能的字段名
+                if (data.time) {
+                    timestamp = data.time;
+                } else if (data.t) {
+                    timestamp = data.t;
+                } else if (data.timestamp) {
+                    timestamp = data.timestamp;
+                } else if (data.data && data.data.time) {
+                    timestamp = data.data.time;
+                } else {
+                    // 如果找不到，尝试把整个响应作为时间戳
+                    timestamp = responseText.trim();
+                }
+            } catch (e) {
+                // 如果不是JSON，假设是纯文本时间戳
+                debugInfo += '📥 非JSON响应，尝试作为纯文本处理<br>';
+                timestamp = responseText.trim();
             }
+            
+            debugInfo += '⏰ 获取到的时间戳：' + timestamp + '<br><br>';
+            showDebug(debugInfo);
             
             if (!timestamp || timestamp.length < 6) {
-                throw new Error('获取时间戳失败，API返回异常');
+                throw new Error('获取时间戳失败，API返回异常：' + responseText);
             }
             
             showStatus('✅ 时间戳获取成功，正在跳转...', 'success');
             
             // 构造签到URL
             const checkinUrl = `http://www.skalibrary.net/wx/scancheck?school=sdufe&type=${type}&t=${timestamp}`;
+            
+            debugInfo += '🔗 签到URL：<a href="' + checkinUrl + '" target="_blank">' + checkinUrl + '</a><br>';
+            debugInfo += '🔗 即将跳转...<br>';
+            showDebug(debugInfo);
             
             // 延迟1秒后跳转，让用户看到成功提示
             setTimeout(() => {
@@ -310,12 +403,25 @@
             
         } catch (error) {
             console.error('操作失败：', error);
-            showStatus('❌ ' + error.message + '\n请确保已连接校园网后重试', 'error');
+            debugInfo += '❌ 错误：' + error.message + '<br>';
+            if (error.name === 'AbortError' || error.name === 'TimeoutError') {
+                debugInfo += '❌ 请求超时，可能原因：<br>';
+                debugInfo += '   1. 手机未连接校园网（WLAN: SDUFE）<br>';
+                debugInfo += '   2. 校园网信号弱或断开<br>';
+                debugInfo += '   3. 微信内置浏览器限制了网络请求<br>';
+                debugInfo += '   4. API服务器暂时不可用<br><br>';
+                debugInfo += '💡 建议：<br>';
+                debugInfo += '   ✅ 用手机默认浏览器（Chrome/Safari）打开此页面<br>';
+                debugInfo += '   ✅ 关闭手机移动数据，强制走WLAN<br>';
+                debugInfo += '   ✅ 确认已连接 SDUFE 的 WLAN<br>';
+            }
+            showDebug(debugInfo);
+            showStatus('❌ ' + error.message + '<br><br>📱 <strong>请确保已连接校园网（SDUFE）后重试</strong><br><br>💡 建议用手机默认浏览器打开此页面', 'error');
             setButtonsDisabled(false);
         }
     }
     
-    // 页面加载完成后初始化
+    // 页面加载
     document.addEventListener('DOMContentLoaded', function() {
         // 密码验证模块会自动调用 initApp()
         // 如果已经通过验证，则直接显示主界面
