@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>SDUFE 图书馆签到系统</title>
     <style>
         * {
@@ -60,6 +60,8 @@
             cursor: pointer;
             transition: all 0.3s ease;
             color: white;
+            position: relative;
+            overflow: hidden;
         }
         
         .btn:active {
@@ -108,6 +110,7 @@
             background: #ffebee;
             color: #d32f2f;
             display: block;
+            text-align: left;
         }
         
         .info {
@@ -117,15 +120,70 @@
             font-size: 12px;
             color: #666;
             line-height: 1.6;
+            margin-top: 20px;
         }
         
         .info strong {
             color: #333;
         }
+        
+        .hidden {
+            display: none !important;
+        }
+        
+        .result-box {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 15px;
+            display: none;
+        }
+        
+        .result-box.show {
+            display: block;
+        }
+        
+        .result-url {
+            background: white;
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 12px;
+            word-break: break-all;
+            margin: 10px 0;
+            border: 1px solid #ddd;
+        }
+        
+        .manual-btn {
+            display: block;
+            width: 100%;
+            padding: 12px;
+            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+            color: white;
+            text-align: center;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 16px;
+            margin-top: 10px;
+        }
+        
+        .manual-btn:active {
+            transform: scale(0.98);
+        }
+        
+        .step {
+            background: #e3f2fd;
+            padding: 10px;
+            border-radius: 8px;
+            margin-top: 10px;
+            font-size: 13px;
+            line-height: 1.6;
+        }
     </style>
 </head>
 <body>
-    <div class="container">
+    <!-- 主应用界面（默认隐藏，密码验证后显示） -->
+    <div class="container" id="appContainer">
         <h1>📚 图书馆签到</h1>
         <div class="subtitle">山东财经大学 · 远程签到系统</div>
         
@@ -143,26 +201,105 @@
             </button>
         </div>
         
+        <div class="result-box" id="resultBox">
+            <strong>✅ 时间戳获取成功！</strong>
+            <div class="step">
+                💡 <strong>重要：</strong>为避免"非法请求"，请<strong>手动点击</strong>下方按钮跳转（不要自动跳转）
+            </div>
+            <div class="result-url" id="resultUrl"></div>
+            <a class="manual-btn" id="manualBtn" href="#" target="_blank">
+                👆 点击这里手动跳转签到
+            </a>
+            <div class="step">
+                📱 如果仍然提示"非法请求"：<br>
+                1. 请在微信中先关注"山东财经大学图书馆"公众号<br>
+                2. 进入公众号，点菜单"我的"登录账号<br>
+                3. 登录成功后再回来点此按钮
+            </div>
+        </div>
+        
         <div class="info">
             <strong>⚠️ 使用说明：</strong><br>
             1. 确保手机已连接校园网（WLAN: SDUFE）<br>
-            2. 点击按钮后，系统会自动获取时间戳并跳转签到<br>
-            3. 签到成功后会跳转到图书馆页面确认
+            2. 建议先关注"山东财经大学图书馆"公众号并登录<br>
+            3. 点击按钮后，页面会显示跳转链接<br>
+            4. <strong>手动点击"跳转签到"按钮</strong>（避免自动跳转导致登录态丢失）<br>
+            5. 如提示"非法请求"，请先重新登录图书馆账号
         </div>
     </div>
 
     <script>
+    // ===== 密码验证模块（混淆版） =====
+    (function() {
+        'use strict';
+        
+        // 🔑 密钥数组（10个数字，对应10位密码）
+        const SECRET_KEY = [7, 3, 9, 1, 5, 8, 2, 4, 6, 7];
+        
+        // 🔒 加密后的密码（十六进制，这是 "zhtzht8888" 的加密结果）
+        const ENCRYPTED_PASSWORD = "816b7d7b6d7c3a3c3e3f";
+        
+        // 🧮 密码验证函数
+        function verifyPassword(userInput) {
+            if (userInput.length !== SECRET_KEY.length) return false;
+            
+            const inputChars = userInput.split('').map(c => c.charCodeAt(0));
+            const encryptedInput = inputChars.map((charCode, index) => {
+                return charCode + SECRET_KEY[index];
+            });
+            
+            const hexString = encryptedInput.map(num => {
+                return num.toString(16).padStart(2, '0');
+            }).join('');
+            
+            return hexString === ENCRYPTED_PASSWORD;
+        }
+        
+        // 🔐 启动验证
+        function initAuth() {
+            const savedAuth = localStorage.getItem('library_auth');
+            if (savedAuth === 'true') {
+                initApp();
+                return;
+            }
+            
+            const userInput = prompt('🔐 请输入访问密码：');
+            if (userInput === null) {
+                document.body.innerHTML = '<h2 style="text-align:center;margin-top:50px;color:white;">访问已取消</h2>';
+                return;
+            }
+            
+            if (!verifyPassword(userInput)) {
+                alert('❌ 密码错误！');
+                document.body.innerHTML = '<h2 style="text-align:center;margin-top:50px;color:white;">访问被拒绝</h2>';
+                return;
+            }
+            
+            localStorage.setItem('library_auth', 'true');
+            initApp();
+        }
+        
+        initAuth();
+    })();
+
+    // ===== 主应用逻辑 =====
+    function initApp() {
+        // 显示主界面
+        document.getElementById('appContainer').classList.remove('hidden');
+    }
+    
     // 显示状态消息
     function showStatus(message, type) {
         const statusEl = document.getElementById('status');
         statusEl.innerHTML = message;
         statusEl.className = 'status ' + type;
+        statusEl.classList.remove('hidden');
     }
     
     // 隐藏状态消息
     function hideStatus() {
         const statusEl = document.getElementById('status');
-        statusEl.className = 'status';
+        statusEl.classList.add('hidden');
     }
     
     // 设置按钮状态
@@ -172,10 +309,24 @@
         document.getElementById('btnCheckout').disabled = disabled;
     }
     
+    // 显示签到结果（手动跳转）
+    function showResult(url) {
+        const resultBox = document.getElementById('resultBox');
+        const resultUrl = document.getElementById('resultUrl');
+        const manualBtn = document.getElementById('manualBtn');
+        
+        resultUrl.textContent = url;
+        manualBtn.href = url;
+        resultBox.classList.add('show');
+    }
+    
     // 处理签到/离馆/签离操作
     async function handleAction(action) {
         hideStatus();
         setButtonsDisabled(true);
+        
+        // 隐藏之前的结果
+        document.getElementById('resultBox').classList.remove('show');
         
         // 确定类型参数
         const typeMap = {
@@ -197,53 +348,60 @@
             // 调用图书馆API获取时间戳
             const apiUrl = 'https://libst.sdufe.edu.cn/api.php/v3qrtime';
             
-            const response = await fetch(apiUrl, {
+            const response = await fetch(apiUrl + '?_=' + Date.now(), {
                 method: 'GET',
                 headers: {
-                    'Accept': 'application/json',
+                    'Accept': 'application/json, text/plain, */*',
                 },
-                // 防止缓存
-                cache: 'no-cache'
+                cache: 'no-cache',
+                signal: AbortSignal.timeout(10000)
             });
             
             if (!response.ok) {
                 throw new Error('API请求失败，状态码：' + response.status);
             }
             
-            const data = await response.json();
+            const responseText = await response.text();
             
-            // 假设API返回格式为 { data: "51526269564" }
+            // 尝试解析时间戳
             let timestamp = '';
-            if (data.data) {
-                timestamp = data.data;
-            } else if (data.time) {
-                timestamp = data.time;
-            } else if (typeof data === 'string') {
-                timestamp = data;
-            } else {
-                throw new Error('无法解析API返回的时间戳');
+            try {
+                const data = JSON.parse(responseText);
+                timestamp = data.time || data.t || data.timestamp || (data.data && data.data.time) || '';
+            } catch (e) {
+                timestamp = responseText.trim();
             }
             
             if (!timestamp || timestamp.length < 6) {
-                throw new Error('获取时间戳失败，API返回异常');
+                throw new Error('获取时间戳失败，API返回：' + responseText);
             }
             
-            showStatus('✅ 时间戳获取成功，正在跳转...', 'success');
+            showStatus('✅ 时间戳获取成功！请手动点击跳转按钮', 'success');
             
             // 构造签到URL
             const checkinUrl = `http://www.skalibrary.net/wx/scancheck?school=sdufe&type=${type}&t=${timestamp}`;
             
-            // 延迟1秒后跳转，让用户看到成功提示
-            setTimeout(() => {
-                window.location.href = checkinUrl;
-            }, 1000);
+            // 显示结果，让用户手动点击
+            showResult(checkinUrl);
+            
+            setButtonsDisabled(false);
             
         } catch (error) {
             console.error('操作失败：', error);
-            showStatus('❌ ' + error.message + '<br><br>📱 <strong>请确保已连接校园网（SDUFE）后重试</strong>', 'error');
+            showStatus('❌ ' + error.message + '<br><br>📱 <strong>请确保已连接校园网（SDUFE）后重试</strong><br><br>💡 建议：<br>   • 使用手机默认浏览器（Chrome/Safari）<br>   • 关闭移动数据，强制走WLAN', 'error');
             setButtonsDisabled(false);
         }
     }
+    
+    // 页面加载完成后初始化
+    document.addEventListener('DOMContentLoaded', function() {
+        // 密码验证模块会自动调用 initApp()
+        // 如果已经通过验证，则直接显示主界面
+        const savedAuth = localStorage.getItem('library_auth');
+        if (savedAuth === 'true') {
+            initApp();
+        }
+    });
     </script>
 </body>
 </html>
